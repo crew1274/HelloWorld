@@ -7,7 +7,6 @@ import java.util.concurrent.CountDownLatch;
 
 @Component
 public class Receiver {
-
     private final RabbitTemplate rabbitTemplate = new RabbitTemplate();
 
     private CountDownLatch latch = new CountDownLatch(1);
