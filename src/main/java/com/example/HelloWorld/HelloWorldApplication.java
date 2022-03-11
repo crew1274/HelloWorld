@@ -1,21 +1,16 @@
- package com.example.HelloWorld;
+package com.example.HelloWorld;
 
+import org.springframework.amqp.core.*;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import org.springframework.amqp.core.Binding;
-import org.springframework.amqp.core.BindingBuilder;
-import org.springframework.amqp.core.Queue;
-import org.springframework.amqp.core.TopicExchange;
-import org.springframework.amqp.rabbit.connection.ConnectionFactory;
-import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
-import org.springframework.amqp.rabbit.listener.adapter.MessageListenerAdapter;
-import org.springframework.context.annotation.Bean;
-
-import java.util.concurrent.CountDownLatch;
-
+import java.net.*;
+import java.io.*;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import java.nio.charset.StandardCharsets;
 
 @SpringBootApplication
 @RestController
@@ -31,7 +26,7 @@ public class HelloWorldApplication
 
 	public static final String routingKeyRPC = "test_rpc";
 
-	public static final String response = "Hello World! Spring Boot!";
+	public String response = "Hello World! Spring Boot!";
 
 	@RequestMapping("/")
 	public String home()
@@ -39,57 +34,84 @@ public class HelloWorldApplication
 		return response;
 	}
 
-	@Bean
-	Queue queue()
+//	@Bean
+//	Queue queue()
+//	{
+//		return new Queue(queueName, false);
+//	}
+//
+//	@Bean
+//	Queue replyQueue()
+//	{
+//		return new Queue(queueNameRPC, false);
+//	}
+//
+//	@Bean
+//	TopicExchange exchange()
+//	{
+//		return new TopicExchange(exchangeName);
+//	}
+
+//	@Bean
+//	Binding binding()
+//	{
+//		return BindingBuilder.bind(queue()).to(exchange()).with(routingKey);
+//	}
+
+//	@Bean
+//	public Binding replyBinding()
+//	{
+//		return BindingBuilder.bind(replyQueue()).to(exchange()).with(routingKeyRPC);
+//	}
+
+//	@Bean
+//	SimpleMessageListenerContainer container(ConnectionFactory connectionFactory,
+//											 MessageListenerAdapter listenerAdapter)
+//	{
+//		SimpleMessageListenerContainer container = new SimpleMessageListenerContainer();
+//		container.setConnectionFactory(connectionFactory);
+//		container.setQueueNames(queueName);
+//		container.setMessageListener(listenerAdapter);
+//		return container;
+//	}
+//
+//	@Bean
+//	MessageListenerAdapter listenerAdapter(HelloWorldApplication this)
+//	{
+//		return new MessageListenerAdapter(this, "receiveMessage");
+//	}
+
+	@Autowired
+	RabbitTemplate rabbit;
+
+	@RabbitListener(queues = "test")
+	public void receiveMessage(Message message) throws Exception
 	{
-		return new Queue(queueName, false);
+//      System.out.println("Received: <" + message.getMessageProperties() + ">");
+//		System.out.println("Received getReplyTo: <" + message.getMessageProperties().getReplyTo() + ">");
+		if(	message.getMessageProperties().getReplyTo() != null &&
+				message.getMessageProperties().getHeaders().get("routingKey").toString() != null)
+		{
+			var props = new MessageProperties();
+			props.getHeaders().put("MULE_CORRELATION_ID", message.getMessageProperties().getHeaders().get("MULE_CORRELATION_ID"));
+			props.setContentType(message.getMessageProperties().getContentType());
+			String s = new String(message.getBody(), StandardCharsets.UTF_8);
+			doSomething(s);
+			System.out.println("getBody: <" + s + ">");
+			Message messageReply = new Message((s + " for rpc").getBytes(), props);
+//			System.out.println("routingKey: <" + message.getMessageProperties().getHeaders().get("routingKey").toString() + ">");
+			var routingKey= message.getMessageProperties().getHeaders().get("routingKey").toString();
+			rabbit.send("test", routingKey, messageReply);
+		}
 	}
 
-	@Bean
-	Queue replyQueue()
+	public void doSomething(String s)
 	{
-		return new Queue(queueNameRPC, false);
-	}
-
-	@Bean
-	TopicExchange exchange()
-	{
-		return new TopicExchange(exchangeName);
-	}
-
-	@Bean
-	Binding binding(Queue queue, TopicExchange exchange)
-	{
-		return BindingBuilder.bind(queue).to(exchange).with(routingKey);
-	}
-
-	@Bean
-	public Binding replyBinding()
-	{
-		return BindingBuilder.bind(replyQueue()).to(exchange()).with(routingKeyRPC);
-	}
-
-	@Bean
-	SimpleMessageListenerContainer container(ConnectionFactory connectionFactory,
-											 MessageListenerAdapter listenerAdapter)
-	{
-		SimpleMessageListenerContainer container = new SimpleMessageListenerContainer();
-		container.setConnectionFactory(connectionFactory);
-		container.setQueueNames(queueName);
-		container.setMessageListener(listenerAdapter);
-		return container;
-	}
-
-	@Bean
-	MessageListenerAdapter listenerAdapter(Receiver receiver)
-	{
-		return new MessageListenerAdapter(receiver, "receiveMessage");
+		response = s;
 	}
 
 	public static void main(String[] args) throws InterruptedException
 	{
 		SpringApplication.run(HelloWorldApplication.class, args);
 	}
-
 }
-
